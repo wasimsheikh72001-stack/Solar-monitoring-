@@ -27,18 +27,25 @@ jobs:
         uses: android-actions/setup-android@v4
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: '8.9'
 
+      - name: Extract Project ZIP
+        run: |
+          unzip -q SolarManagerPro_University_Project.zip -d extracted
+          ls -la extracted
+          test -d extracted/SolarManagerPro_University/android
+
       - name: Build Debug APK
-        working-directory: android
+        working-directory: extracted/SolarManagerPro_University/android
         run: gradle assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: SolarManagerPro-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: extracted/SolarManagerPro_University/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+
