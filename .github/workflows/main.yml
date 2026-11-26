@@ -14,38 +14,88 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1. Download repository
       - name: Checkout Repository
         uses: actions/checkout@v5
 
+      # 2. Setup Java
       - name: Setup JDK 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
+      # 3. Setup Android SDK
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
 
+      # 4. Setup Gradle
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: '8.9'
 
+      # 5. Extract project ZIP
       - name: Extract Project ZIP
         run: |
-          unzip -q SolarManagerPro_University_Project.zip -d extracted
-          ls -la extracted
-          test -d extracted/SolarManagerPro_University/android
+          set -e
+          ZIP_FILE=$(find . -maxdepth 2 -name "SolarManagerPro_University_Project.zip" | head -n 1)
 
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: Project ZIP not found!"
+            exit 1
+          fi
+
+          mkdir -p extracted
+          unzip -q "$ZIP_FILE" -d extracted
+
+          echo "Extracted files:"
+          find extracted -maxdepth 4 -type d
+
+          ANDROID_DIR=$(find extracted -type f -name "settings.gradle.kts" -printf '%h\n' | head -n 1)
+
+          if [ -z "$ANDROID_DIR" ]; then
+            echo "ERROR: Android settings.gradle.kts not found!"
+            exit 1
+          fi
+
+          echo "ANDROID_DIR=$ANDROID_DIR" >> "$GITHUB_ENV"
+          echo "Android project found: $ANDROID_DIR"
+
+      # 6. Build APK and save complete log
       - name: Build Debug APK
-        working-directory: extracted/SolarManagerPro_University/android
-        run: gradle assembleDebug
+        id: android_build
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          gradle -p "$ANDROID_DIR" assembleDebug --stacktrace --console=plain 2>&1 | tee build.log
 
+      # 7. Upload APK
       - name: Upload APK
+        if: steps.android_build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: SolarManagerPro-debug-apk
-          path: extracted/SolarManagerPro_University/android/app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ env.ANDROID_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+
+      # 8. Upload complete error log
+      - name: Upload Build Error Log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-Build-Log
+          path: build.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # 9. Fail workflow if APK build failed
+      - name: Report Build Failure
+        if: steps.android_build.outcome == 'failure'
+        run: |
+          echo "Android APK build failed."
+          echo "Download Android-Build-Log from Actions Artifacts."
+          exit 1
+
 
